@@ -9,3 +9,7 @@ You will need to have python.
 - https://www.python.org/downloads/
 
 This code is presented as is for the moment. It's just for me to be able to queue up m3u8 downloads with ffmpeg.
+
+## How Do
+
+- ```python m3u8_gatherer.py```

@@ -1,6 +1,7 @@
 import subprocess
 import threading
 import re
+import time
 import tkinter as tk
 from tkinter import filedialog
 
@@ -10,9 +11,9 @@ table_rows = []
 table_header = [
     "URL",
     "Output Filename",
-    "Size",
     "%",
-    ""
+    "Size",
+    "Time"
 ]
 width=800
 height=600
@@ -37,8 +38,8 @@ def browse_output(widget):
 def enqueue_m3u8(url, output_filename):
     full_output, duration, dimensions = query_m3u8(url)
 
-    # m3u8 url, output filename, size, duration, width, height, completion percentage
-    queue.append([url, output_filename, 0, duration, dimensions[0], dimensions[1], 0])
+    # m3u8 url, output filename, size, duration, dimensions (width, height), completion percentage, time (elapsed, total), filesize (current, total)
+    queue.append([url, output_filename, 0, duration, dimensions, 0, (0, 0), (0, 0)])
     update_queue_table()
     # clear_initial_form()
 
@@ -67,33 +68,37 @@ def destroy_table():
     table_rows.clear()
 
 def create_table_row(index, append=True):
-    url, output, size, duration, width, height, percentage = queue[index]
+    url, output, size, duration, dimensions, percentage, time_elapsed, filesize = queue[index]
 
-    url_entry = tk.Entry(queue_frame, width=60)
+    url_entry = tk.Entry(queue_frame, width=40)
     url_entry.insert(0, url)
     url_entry.bind('<FocusOut>', update_list_value_from_entry)
     url_entry.grid(row=index+1, column=0, sticky="nsew")
     
-    output_entry = tk.Entry(queue_frame, width=60)
+    output_entry = tk.Entry(queue_frame, width=30)
     output_entry.insert(0, output)
     output_entry.bind('<FocusOut>', update_list_value_from_entry)
     output_entry.grid(row=index+1, column=1, sticky="nsew")
     
-    position_entry = tk.Entry(queue_frame, width=8)
-    position_entry.insert(0, size)
-    position_entry.grid(row=index+1, column=2, sticky="nsew")
-    
-    percentage_entry = tk.Entry(queue_frame, width=7)
+    percentage_entry = tk.Entry(queue_frame, width=8)
     percentage_entry.insert(0, f'{percentage:.1f}%')
-    percentage_entry.grid(row=index+1, column=3, sticky="nsew")
+    percentage_entry.grid(row=index+1, column=2, sticky="nsew")
+    
+    filesize_entry = tk.Entry(queue_frame, width=15)
+    filesize_entry.insert(0, filesize_entry_format(filesize))
+    filesize_entry.grid(row=index+1, column=3, sticky="nsew")
+    
+    time_entry = tk.Entry(queue_frame, width=10)
+    time_entry.insert(0, time_elapsed_entry_format(time_elapsed))
+    time_entry.grid(row=index+1, column=4, sticky="nsew")
 
     # button that will query m3u8 file
     # query_button = tk.Button(queue_frame, text="?", command=lambda e: query_m3u8(url), width=5)
     # query_button.grid(row=index+1, column=4, sticky="nsew")
 
     if append == True:
-        table_rows.append([url_entry, output_entry, position_entry, percentage_entry])
-    return url_entry, output_entry, position_entry, percentage_entry
+        table_rows.append([url_entry, output_entry, percentage_entry, filesize_entry, time_entry])
+    return url_entry, output_entry, percentage_entry, filesize_entry, time_entry
 
 def update_table_row(index):
     # if table_rows index does not exist, create it
@@ -102,12 +107,14 @@ def update_table_row(index):
         create_table_row(index)
 
     else:
-        url, output, size, duration, width, height, percentage = queue[index]
-        url_entry, output_entry, position_entry, percentage_entry = table_rows[index+1]
+        url, output, size, duration, dimensions, percentage, time_elapsed, filesize = queue[index]
+        url_entry, output_entry, percentage_entry, filesize_entry, time_entry = table_rows[index+1]
         update_list_entry_with_value(url_entry, url)
         update_list_entry_with_value(output_entry, output)
-        update_list_entry_with_value(position_entry, size)
         update_list_entry_with_value(percentage_entry, f'{percentage:.1f}%')
+        update_list_entry_with_value(filesize_entry, filesize_entry_format(filesize))
+        update_list_entry_with_value(time_entry, time_elapsed_entry_format(time_elapsed))
+
 
 
 def create_queue_table():
@@ -126,7 +133,50 @@ def update_queue_table(destroy=False):
     else:
         for index in range(len(queue)):
             update_table_row(index)
+
+
+
+
+def milliseconds_to_time(ms):
+    seconds = ms / 1000
+    minutes = seconds / 60
+    hours = minutes / 60
+    if hours >= 1:
+        return f'{hours:.2f}h'
+    elif minutes >= 1:
+        return f'{minutes:.0f}m'
+    else:
+        return f'{seconds:.0f}s'
+        
     
+def kilobytes_to_size(kb, type="MB", show=True):
+    mb = kb / 1024
+    gb = mb / 1024
+    if gb > 1 or type == "GB":
+        if show:
+            return f'{gb:.2f} GB'
+        else:
+            return gb
+    elif mb > 1 or type == "MB":
+        if show:
+            return f'{mb:.0f} MB'
+        else:
+            return mb
+    else:
+        if show:
+            return f'{kb} KB'
+        else:
+            return kb
+        
+def filesize_entry_format(filesize):
+    g_or_m = "GB" if filesize[1] > 1024 * 1024 else "MB"
+    current_size = kilobytes_to_size(filesize[0], g_or_m, True)
+    total_size = kilobytes_to_size(filesize[1], g_or_m, True)
+    return f'{current_size} / {total_size}'
+def time_elapsed_entry_format(time_elapsed):
+    time_current = milliseconds_to_time(time_elapsed[0])
+    time_total = milliseconds_to_time(time_elapsed[1])
+    return f'{time_current} / {time_total}'
 
 def clear_queue():
     queue.clear()
@@ -192,7 +242,7 @@ def process_queue():
     global queue_position
     if queue_position < len(queue):
 
-        url, output_filename, size, duration, width, height, percentage = queue[queue_position]
+        url, output_filename, size, duration, dimensions, percentage, time_elapsed, filesize = queue[queue_position]
         if percentage == 100:
             result_label.config(text=f"Skipping {output_filename} because it already exists.")
             queue_position += 1
@@ -261,31 +311,27 @@ def update_progress(process, output_filename, duration):
     global queue_position
     queue_row = queue[queue_position]
 
+    # set time_start to current timestamp
+    time_start = time.time()
+
     while process.poll() is None:
 
         table_row = table_rows[queue_position+1]
+        time_elapsed = time.time() - time_start
+
         # Update output text area
         output_line = process.stdout.readline()
         if output_line:
+
+            kbs = 0
+            percentage = 0
 
             # parse line for size
             p = re.compile('size=\s*(\d+)kB')
             m = p.search(output_line)
             if m:
                 kbs = int(m.group(1))
-                if kbs > 0:
-                    mbs = kbs / 1024
-                    gbs = mbs / 1024
-                    if gbs > 1:
-                        queue_row[2] = f'{gbs:.2f} GB'
-                    elif mbs > 1:
-                        queue_row[2] = f'{mbs:.2f} MB'
-                    else:
-                        queue_row[2] = f'{kbs} KB'
-                else:
-                    queue_row[2] = f'0'
-
-                update_list_entry_with_value(table_row[2], queue[queue_position][2])
+                queue_row[2] = kbs
 
             # parse line for time progress
             p = re.compile('time=-?(\d+):(\d+):(\d+)')
@@ -296,18 +342,26 @@ def update_progress(process, output_filename, duration):
                 seconds = int(m.group(3))
                 # duration in minutes
                 progress = hours * 60 + minutes + seconds / 60
-                percent = progress / duration * 100
-                queue_row[6] = percent
+                percent = progress / duration
+                percentage = percent * 100
+                queue_row[5] = percentage
 
-                update_list_entry_with_value(table_row[3], f'{percent:.1f}%')
+            # if percent exists, set time left to time elapsed / percent * 100
+            if percentage > 0 and kbs > 0:
+                total_time = time_elapsed / percent
+                queue_row[6] = (time_elapsed * 1000, total_time * 1000)
 
-            output_text.delete('1.0', tk.END)
-            output_text.insert(tk.END, output_line)
-            output_text.see(tk.END)
+                total_kilobytes = kbs / percent
+                queue_row[7] = (kbs, total_kilobytes)
+
+            update_table_row(queue_position)
+            # output_text.delete('1.0', tk.END)
+            # output_text.insert(tk.END, output_line)
+            # output_text.see(tk.END)
             queue_frame.update_idletasks()
 
     result_label.config(text=f"m3u8 file saved as {output_filename}")
-    queue_row[6] = 100
+    queue_row[5] = 100
 
     update_queue_table()
     queue_position += 1
@@ -320,11 +374,11 @@ window.title("m3u8 Downloader")
 # Left side - Inputs
 
 right_top_frame = tk.Frame(window, width=500, height=400)
-right_top_frame.grid(row=0, column=0, padx=10, pady=10)
+right_top_frame.pack(padx=10, pady=10)
 right_middle_frame = tk.Frame(window, width=500, height=100)
-right_middle_frame.grid(row=1, column=0, padx=10, pady=10)
+right_middle_frame.pack(padx=10, pady=10)
 right_bottom_frame = tk.Frame(window, width=500, height=100)
-right_bottom_frame.grid(row=2, column=0)
+right_bottom_frame.pack()
 
 # Right side - Queue Table
 
