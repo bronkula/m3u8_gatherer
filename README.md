@@ -10,6 +10,11 @@ You will need to have python.
 
 This code is presented as is for the moment. It's just for me to be able to queue up m3u8 downloads with ffmpeg.
 
-## How Do
+## How To Run
 
-- ```python m3u8_gatherer.py```
+- ```python m3u8_gatherer.py``` to run
+
+## How To Compile
+
+- ```pip install pyinstaller```
+- ```pyinstaller --onefile m3u8_gatherer.py```
